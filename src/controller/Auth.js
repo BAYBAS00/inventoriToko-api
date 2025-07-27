@@ -92,18 +92,24 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        let { email, password } = req.body; // Gunakan 'let' agar bisa diubah
 
-        const emailInsensitive = email.toLowerCase();
+        // --- Perbaikan: Trim email di sisi server sebelum validasi Joi ---
+        email = email.trim(); // Tambahkan baris ini
+        // --- End Perbaikan ---
 
-        const { error } = loginRule.validate(req.body);
+        console.log("Email received from client (after trimming, before Joi validation):", email); // Ubah log ini
+
+        const emailInsensitive = email.toLowerCase(); // Ini akan menggunakan email yang sudah di-trim
+
+        const { error } = loginRule.validate({ email: email, password: password }); // Pastikan Joi memvalidasi email yang sudah di-trim
         if (error) {
+            console.error("Joi validation error details:", error.details); // Log detail error Joi
             return res.status(400).json({
                 message: 'Input tidak valid. Silahkan coba lagi',
                 detail: error.details.map(err => err.message)
             });
         };
-
 
         if (!emailInsensitive || !password) {
             return res.status(400).json({
