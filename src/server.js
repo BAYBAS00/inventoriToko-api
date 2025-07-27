@@ -20,6 +20,7 @@ app.use(middlewareLogRequest);
 app.use('/auth', authRoute);
 // app.use('/fish', fishTypeRoute);
 app.use('/inventory', inventoryRoutes);
+app.use('/uploads', express.static('uploads'));
 
 app.get("/", (req, res, next) => {
     res.json({
