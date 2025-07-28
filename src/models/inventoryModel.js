@@ -15,6 +15,32 @@ module.exports = {
         await db.execute(query, [userId, productid, quantity]);
     },
 
+    updateCartItemQuantity: async (userId, productId, newQuantity) => {
+        try {
+            if (newQuantity <= 0) {
+                // Jika kuantitas 0 atau kurang, hapus item dari keranjang
+                await module.exports.deleteCartItem(userId, productId);
+                console.log(`Product ${productId} removed from user ${userId}'s cart due to quantity <= 0.`);
+            } else {
+                // Perbarui kuantitas item di keranjang
+                const [result] = await db.execute(
+                    'UPDATE carts SET quantity = ? WHERE user_id = ? AND product_id = ?',
+                    [newQuantity, userId, productId]
+                );
+                if (result.affectedRows === 0) {
+                    // Ini bisa terjadi jika item tidak ditemukan (misalnya, jika mencoba memperbarui item yang tidak ada)
+                    // Anda bisa memilih untuk melempar error atau mengabaikannya.
+                    // Untuk kasus ini, kita akan melempar error agar frontend tahu.
+                    throw new Error('Item keranjang tidak ditemukan atau tidak dapat diperbarui.');
+                }
+                console.log(`Updated quantity for product ${productId} in user ${userId}'s cart to ${newQuantity}`);
+            }
+        } catch (error) {
+            console.error('Error in inventoryModel.updateCartItemQuantity:', error);
+            throw new Error('Gagal memperbarui kuantitas produk di keranjang.');
+        }
+    },
+
     getCart: async (userId) => {
         const query = `
             SELECT 

@@ -26,6 +26,25 @@ const addToCart = async (req, res) => {
     }
 };
 
+const updateCartItemQuantity = async (req, res) => {
+    const userId = req.user.id;
+    const { productId } = req.params; // Ambil productId dari parameter URL
+    const { quantity } = req.body; // Ambil newQuantity dari body permintaan
+
+    console.log("DEBUG: updateCartItemQuantity request received:");
+    console.log("User ID (from token):", userId);
+    console.log("Product ID (from params):", productId);
+    console.log("New Quantity (from body):", quantity);
+
+    try {
+        await inventoryModel.updateCartItemQuantity(userId, parseInt(productId), quantity);
+        res.json({ message: 'Kuantitas produk di keranjang diperbarui' });
+    } catch (err) {
+        console.error('Error in updateCartItemQuantity:', err);
+        res.status(500).json({ message: err.message });
+    }
+};
+
 const getCart = async (req, res) => {
     const userId = req.user.id;
     try {
@@ -83,6 +102,7 @@ const checkout = async (req, res) => {
 module.exports = {
     getProducts,
     addToCart,
+    updateCartItemQuantity,
     getCart,
     deleteCartItem,
     clearCart,
