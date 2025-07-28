@@ -1,9 +1,25 @@
+// models/inventoryModel.js
 const db = require('../config/database');
 
 module.exports = {
     getAllProducts: async () => {
         const [rows] = await db.execute("SELECT * FROM products");
-        return rows;
+        return rows.map(product => ({
+            ...product,
+            description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+        }));
+    },
+
+    getProductById: async (productId) => {
+        const [rows] = await db.execute("SELECT * FROM products WHERE id = ?", [productId]);
+        const product = rows[0];
+        if (product) {
+            return {
+                ...product,
+                description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+            };
+        }
+        return undefined;
     },
 
     addToCart: async (userId, productid, quantity) => {
@@ -18,19 +34,14 @@ module.exports = {
     updateCartItemQuantity: async (userId, productId, newQuantity) => {
         try {
             if (newQuantity <= 0) {
-                // Jika kuantitas 0 atau kurang, hapus item dari keranjang
                 await module.exports.deleteCartItem(userId, productId);
                 console.log(`Product ${productId} removed from user ${userId}'s cart due to quantity <= 0.`);
             } else {
-                // Perbarui kuantitas item di keranjang
                 const [result] = await db.execute(
                     'UPDATE carts SET quantity = ? WHERE user_id = ? AND product_id = ?',
                     [newQuantity, userId, productId]
                 );
                 if (result.affectedRows === 0) {
-                    // Ini bisa terjadi jika item tidak ditemukan (misalnya, jika mencoba memperbarui item yang tidak ada)
-                    // Anda bisa memilih untuk melempar error atau mengabaikannya.
-                    // Untuk kasus ini, kita akan melempar error agar frontend tahu.
                     throw new Error('Item keranjang tidak ditemukan atau tidak dapat diperbarui.');
                 }
                 console.log(`Updated quantity for product ${productId} in user ${userId}'s cart to ${newQuantity}`);
@@ -44,34 +55,33 @@ module.exports = {
     getCart: async (userId) => {
         const query = `
             SELECT 
-                c.id AS cart_item_id,        -- ID dari item keranjang
-                c.user_id,                   -- ID pengguna
-                c.product_id,                -- ID produk di keranjang
-                c.quantity,                  -- Kuantitas produk di keranjang
-                p.id AS product_id_actual,   -- ID produk dari tabel products
-                p.name AS product_name,      -- Nama produk
-                p.price AS product_price,    -- Harga produk
-                p.stock AS product_stock,    -- Stok produk
-                p.image AS product_image     -- Gambar produk
+                c.id AS cart_item_id,
+                c.user_id,
+                c.product_id,
+                c.quantity,
+                p.id AS product_id_actual,
+                p.name AS product_name,
+                p.price AS product_price, -- <--- PASTIKAN INI DIAMBIL
+                p.stock AS product_stock,
+                p.image AS product_image
             FROM carts c
             JOIN products p ON c.product_id = p.id
             WHERE c.user_id = ?
         `;
         const [rows] = await db.execute(query, [userId]);
 
-        // Memformat hasil agar sesuai dengan struktur data CartItem di Android
-        // Android mengharapkan objek 'product' bersarang di dalam setiap item keranjang
         const formattedResults = rows.map(row => ({
             id: row.cart_item_id,
             user_id: row.user_id,
             product_id: row.product_id,
             quantity: row.quantity,
-            product: { // Objek 'product' yang diharapkan oleh model data Android
+            product: {
                 id: row.product_id_actual,
                 name: row.product_name,
-                price: row.product_price,
+                price: row.product_price, // <--- PASTIKAN INI DIGUNAKAN DI SINI
                 stock: row.product_stock,
-                image: row.product_image
+                image: row.product_image,
+                description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
             }
         }));
         return formattedResults;
@@ -91,21 +101,23 @@ module.exports = {
         try {
             await conn.beginTransaction();
 
+            // Pastikan totalPrice adalah angka dan format ke 2 desimal jika perlu
+            const finalTotalPrice = parseFloat(totalPrice).toFixed(2);
+            console.log(`DEBUG: Checkout - User ID: ${userId}, Total Price (before insert): ${totalPrice}, Final Total Price (formatted): ${finalTotalPrice}, Type: ${typeof finalTotalPrice}`);
+
             const [result] = await conn.execute(
-                "INSERT INTO transactions (user_id, total_price, status) VALUES (?, ?, 'PAID')",
-                [userId, totalPrice]
+                "INSERT INTO transactions (user_id, total_price, status, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW())",
+                [userId, finalTotalPrice, 'PAID'] // Gunakan finalTotalPrice
             );
 
             const transactionId = result.insertId;
+            console.log(`DEBUG: Checkout - Transaction ID: ${transactionId} inserted.`);
 
             for (const item of cartItems) {
-                // Pastikan Anda mengakses properti yang benar dari item keranjang yang diformat
-                // item.product_id dan item.price mungkin perlu disesuaikan jika data dari getCart
-                // tidak langsung sesuai (misalnya, jika Anda menggunakan item.product.id)
                 await conn.execute(
                     `INSERT INTO transaction_items (transaction_id, product_id, quantity, price)
                     VALUES (?, ?, ?, ?)`,
-                    [transactionId, item.product_id, item.quantity, item.product.price] // Menggunakan item.product.price
+                    [transactionId, item.product_id, item.quantity, item.product.price]
                 );
 
                 await conn.execute(
@@ -124,5 +136,96 @@ module.exports = {
         } finally {
             conn.release();
         }
+    },
+
+    directCheckoutProduct: async (userId, productId, quantity, totalPrice) => {
+        const conn = await db.getConnection();
+        try {
+            await conn.beginTransaction();
+
+            // Pastikan totalPrice adalah angka dan format ke 2 desimal jika perlu
+            const finalTotalPrice = parseFloat(totalPrice).toFixed(2);
+            console.log(`DEBUG: Direct Checkout - User ID: ${userId}, Product ID: ${productId}, Quantity: ${quantity}, Total Price (before insert): ${totalPrice}, Final Total Price (formatted): ${finalTotalPrice}, Type: ${typeof finalTotalPrice}`);
+
+            const [result] = await conn.execute(
+                "INSERT INTO transactions (user_id, total_price, status, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW())",
+                [userId, finalTotalPrice, 'PAID'] // Gunakan finalTotalPrice
+            );
+            const transactionId = result.insertId;
+            console.log(`DEBUG: Direct Checkout - Transaction ID: ${transactionId} inserted.`);
+
+            const [productInfo] = await conn.execute("SELECT price FROM products WHERE id = ?", [productId]);
+            if (!productInfo || productInfo.length === 0) {
+                throw new Error("Produk tidak ditemukan.");
+            }
+            const productPrice = productInfo[0].price;
+
+            await conn.execute(
+                `INSERT INTO transaction_items (transaction_id, product_id, quantity, price)
+                VALUES (?, ?, ?, ?)`,
+                [transactionId, productId, quantity, productPrice]
+            );
+
+            await conn.execute(
+                `UPDATE products SET stock = stock - ? WHERE id = ?`,
+                [quantity, productId]
+            );
+
+            await conn.commit();
+            return transactionId;
+        } catch (err) {
+            await conn.rollback();
+            throw err;
+        } finally {
+            conn.release();
+        }
+    },
+
+    getPurchaseHistory: async (userId) => {
+        const query = `
+            SELECT
+                t.id AS transactionId,
+                t.total_price AS transactionTotalPrice,
+                t.createdAt AS transactionCreatedAt,
+                ti.id AS itemId,
+                ti.product_id AS productId,
+                ti.quantity,
+                ti.price AS itemPrice,
+                p.name AS productName,
+                p.image AS productImage
+            FROM transactions t
+            JOIN transaction_items ti ON t.id = ti.transaction_id
+            JOIN products p ON ti.product_id = p.id
+            WHERE t.user_id = ?
+            ORDER BY t.createdAt DESC, ti.id ASC
+        `;
+        const [rows] = await db.execute(query, [userId]);
+
+        // Format data untuk setiap item secara individual
+        const formattedHistory = rows.map(row => {
+            // Pastikan total_price dan item_price diformat sebagai string dengan 2 desimal
+            const formattedTransactionTotalPrice = parseFloat(row.transactionTotalPrice).toFixed(2);
+            const formattedItemPrice = parseFloat(row.itemPrice).toFixed(2);
+
+            // Konversi objek Date ke string ISO 8601 jika createdAt adalah objek Date
+            const transactionCreatedAtString = row.transactionCreatedAt instanceof Date ? row.transactionCreatedAt.toISOString() : row.transactionCreatedAt;
+
+            console.log(`DEBUG: Raw DB Row for Item - Transaction ID: ${row.transactionId}, Item ID: ${row.itemId}, TotalPrice: ${row.transactionTotalPrice}, ItemPrice: ${row.itemPrice}`);
+            console.log(`DEBUG: Processed Item - TransactionTotalPrice: ${formattedTransactionTotalPrice}, ItemPrice: ${formattedItemPrice}, CreatedAt: ${transactionCreatedAtString}`);
+
+            return {
+                transactionId: row.transactionId,
+                transactionTotalPrice: formattedTransactionTotalPrice,
+                transactionCreatedAt: transactionCreatedAtString,
+                itemId: row.itemId,
+                productId: row.productId,
+                quantity: row.quantity,
+                itemPrice: formattedItemPrice,
+                productName: row.productName,
+                productImage: row.productImage
+            };
+        });
+
+        return formattedHistory;
     }
 };
